@@ -263,3 +263,17 @@ def test_webhook_app(tmp_path):
     env = {**os.environ, "BOT_TOKEN": "1:TEST", "DB_PATH": str(tmp_path / "t.db"), "ALLOWED_USERS": ""}
     result = subprocess.run([sys.executable, str(script)], env=env, capture_output=True, text=True, timeout=60)
     assert "WEB OK" in result.stdout, result.stderr[-3000:]
+
+
+def test_private_bot_tells_stranger_their_id():
+    async def scenario():
+        h = Harness()
+        _middleware.allowed = frozenset({1})
+        try:
+            out = await h.text("/start")
+        finally:
+            _middleware.allowed = frozenset()
+        assert out == f"🔒 Это личный бот. Твой Telegram ID: <code>{UID}</code>"
+        assert h.db.get_user(UID) is None
+
+    run(scenario())

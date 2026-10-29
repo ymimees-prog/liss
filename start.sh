@@ -2,13 +2,13 @@
 # Запуск на Mac/Linux/Android (Termux): sh start.sh
 cd "$(dirname "$0")"
 if [ ! -f .env ]; then
-    cp .env.example .env
-    echo "Впиши BOT_TOKEN и ALLOWED_USERS в файл .env (например: nano .env) и запусти sh start.sh ещё раз."
-    exit 0
+    printf "Вставь ключ бота от @BotFather и нажми Enter: "
+    read -r TOKEN
+    printf "BOT_TOKEN=%s\nALLOWED_USERS=9166868659\nTZ=Europe/Moscow\nDB_PATH=liss.db\n" "$TOKEN" > .env
 fi
 if [ ! -d .venv ]; then
     echo "Первый запуск: устанавливаю всё нужное..."
-    python3 -m venv .venv && .venv/bin/pip install -r requirements.txt || exit 1
+    python3 -m venv .venv && .venv/bin/pip install -r requirements.txt || { rm -rf .venv; exit 1; }
 fi
-echo "Бот запущен. Остановить: Ctrl+C"
+echo "Бот запущен! Открой @Akia7_bot в Telegram. Остановить: Ctrl+C"
 exec .venv/bin/python -m bot

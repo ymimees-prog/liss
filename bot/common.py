@@ -4,7 +4,7 @@ from typing import Any, Awaitable, Callable
 from zoneinfo import ZoneInfo
 
 from aiogram import BaseMiddleware, F
-from aiogram.types import TelegramObject, User
+from aiogram.types import Message, TelegramObject, User
 
 from .db import Database
 from .keyboards import MENU_BUTTONS
@@ -42,6 +42,9 @@ class UserMiddleware(BaseMiddleware):
         if tg_user is None:
             return await handler(event, data)
         if self.allowed and tg_user.id not in self.allowed:
+            # Tell a stranger the bot is private; the ID helps the owner if ALLOWED_USERS has a typo.
+            if isinstance(event, Message) and event.chat.type == "private":
+                await event.answer(f"🔒 Это личный бот. Твой Telegram ID: <code>{tg_user.id}</code>")
             return None
         if self.db.create_user(tg_user.id, tg_user.first_name or "", self.default_tz):
             today = datetime.now(ZoneInfo(self.default_tz)).date()
