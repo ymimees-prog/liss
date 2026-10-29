@@ -20,7 +20,13 @@
 
 1. Создай бота у [@BotFather](https://t.me/BotFather) и получи токен.
 2. Узнай свой Telegram ID у [@userinfobot](https://t.me/userinfobot) — чтобы бот отвечал только тебе.
-3. Установи и запусти:
+3. Самый простой запуск — скачай проект и:
+   - **Windows:** дважды кликни `start.bat` (нужен Python с python.org, галочка «Add Python to PATH»)
+   - **Mac / Linux / Android (Termux):** `sh start.sh`
+
+   При первом запуске скрипт создаст `.env` — впиши туда токен и свой ID и запусти ещё раз.
+
+   Или вручную:
 
 ```bash
 python3 -m venv .venv
