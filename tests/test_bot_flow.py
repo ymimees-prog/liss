@@ -79,7 +79,11 @@ def test_full_day_flow():
         assert "90 тяжёлых дней" in await h.text("/start")
 
         # IT: starter plan, log a session through the form
-        assert "Добавила 22" in await h.click("it:starter")
+        assert "OSINT" in await h.click("it:starter")
+        assert "добавила 22 тем" in await h.click("it:plan:python")
+        for plan in ("ai", "osint", "trading"):
+            assert "добавила" in await h.click(f"it:plan:{plan}")
+        assert "уже загружен" in await h.click("it:plan:trading")
         await h.click("it:skill:python")
         await h.click("it:min:60")
         out = await h.click("it:nonote")
@@ -96,7 +100,7 @@ def test_full_day_flow():
         # Menu button while a form is open cancels the form
         await h.click("st:addarea:it")
         assert "Финансы" in await h.text("💰 Финансы")
-        assert h.db.topic_counts(UID, "it")["todo"] == 22
+        assert h.db.topic_counts(UID, "it")["todo"] == 55
 
         # College
         await h.click("att:present")

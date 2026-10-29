@@ -57,7 +57,7 @@ def it_menu() -> InlineKeyboardMarkup:
     return inline([
         [("⏱ Записать занятие", "it:log")],
         [("🗺 Мой роадмап", "st:list:it"), ("📈 Статистика", "it:stats")],
-        [("🚀 Загрузить стартовый план Python + GitHub", "it:starter")],
+        [("🚀 Стартовые планы: Python, ИИ, OSINT, трейдинг", "it:starter")],
     ])
 
 

@@ -6,8 +6,8 @@ from aiogram.types import CallbackQuery, Message
 
 from ..common import UserText, today_for, week_start
 from ..db import Database, streak
-from ..keyboards import BTN_IT, it_menu, minutes_kb, skills_kb, skip_kb
-from ..logic import IT_SKILLS, STARTER_ROADMAP, parse_iso
+from ..keyboards import BTN_IT, grid, it_menu, minutes_kb, skills_kb, skip_kb
+from ..logic import IT_SKILLS, ROADMAPS, parse_iso
 
 router = Router()
 
@@ -122,20 +122,30 @@ async def it_stats(cb: CallbackQuery, db: Database, user):
 
 
 @router.callback_query(F.data == "it:starter")
-async def load_starter(cb: CallbackQuery, db: Database, user):
+async def choose_plan(cb: CallbackQuery):
+    lines = ["<b>🚀 Стартовые планы</b>\n"]
+    lines += [f"{label} — {desc} ({len(topics)} тем)" for label, desc, topics in ROADMAPS.values()]
+    lines.append("\nМожно загрузить несколько. Совет: Python — основа для всего остального, начни с него.")
+    await cb.message.answer("\n".join(lines),
+                            reply_markup=grid([(label, f"it:plan:{key}") for key, (label, _, _) in ROADMAPS.items()]))
+    await cb.answer()
+
+
+@router.callback_query(F.data.startswith("it:plan:"))
+async def load_plan(cb: CallbackQuery, db: Database, user):
+    label, desc, topics = ROADMAPS[cb.data.split(":")[2]]
     uid = user["user_id"]
     existing = {t["title"] for st in ("todo", "review", "mastered") for t in db.topics(uid, "it", st)}
     added = 0
-    for subject, title in STARTER_ROADMAP:
+    for subject, title in topics:
         if title not in existing:
             db.add_topic(uid, "it", subject, title, today_for(user))
             added += 1
     if added:
         await cb.message.answer(
-            f"🚀 Добавила {added} тем в твой роадмап: от основ Python до первого проекта на GitHub.\n"
+            f"{label}: добавила {added} тем в твой роадмап — {desc}.\n"
             "Смотри: 💻 IT-развитие → 🗺 Мой роадмап. Иди по порядку, по теме в 1–3 дня."
         )
     else:
-        await cb.message.answer("Стартовый план уже загружен 👌")
+        await cb.message.answer(f"{label}: план уже загружен 👌")
     await cb.answer()
-

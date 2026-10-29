@@ -43,7 +43,7 @@ async def start(message: Message, state: FSMContext, user):
         f"Челлендж стартовал: <b>{parse_iso(user['start_date']).strftime('%d.%m.%Y')}</b>\n"
         f"Утром в {user['morning_time']} и вечером в {user['evening_time']} я буду напоминать о себе.\n\n"
         "С чего начать:\n"
-        "1. 💻 IT-развитие → 🚀 Загрузить стартовый план Python + GitHub\n"
+        "1. 💻 IT-развитие → 🚀 Стартовые планы (Python, нейросети, OSINT, трейдинг)\n"
         "2. 📚 Учёба → ➕ добавь темы колледжа\n"
         "3. 💰 Финансы → 🎯 поставь цель накоплений\n\n" + HELP,
         reply_markup=main_menu(),
