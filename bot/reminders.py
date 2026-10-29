@@ -4,11 +4,13 @@ import logging
 
 from aiogram import Bot
 
+from . import ai
 from .common import now_for
 from .db import Database
 from .handlers.main import today_checklist
-from .keyboards import main_menu
-from .logic import CHALLENGE_DAYS, challenge_day, parse_iso, random_motivation
+from .keyboards import lesson_kb, main_menu
+from .lessons import render_lesson
+from .logic import CHALLENGE_DAYS, challenge_day, parse_iso, random_motivation, time_to_minutes
 
 log = logging.getLogger(__name__)
 
@@ -32,6 +34,8 @@ def morning_message(db: Database, user) -> str:
     if n in MILESTONES:
         lines.append(MILESTONES[n])
     lines.append("\nОтметь подъём в 🌅 Дневник дня → «⏰ Я проснулась».")
+    if db.next_todo(user["user_id"]):
+        lines.append("Ниже — твоя тема дня 👇")
     if due:
         lines.append(f"🔁 Сегодня повторить тем: <b>{due}</b> (📚 Учёба → Повторить сегодня)")
     lines.append(f"\n💬 <i>{random_motivation()}</i>")
@@ -48,21 +52,37 @@ def evening_message(db: Database, user) -> str:
             "\n\nЗаполни, пока помнишь. И запиши все траты за день 💰")
 
 
+# Reminders are sent at the first check after their time, but not if more than this late
+# (e.g. the bot was off all morning — no "good morning" at 3 pm).
+LATE_LIMIT_MINUTES = 180
+
+
+async def send_due_reminders(bot: Bot, db: Database) -> None:
+    for user in db.all_users():
+        now = now_for(user)
+        today = now.date()
+        if today.isoformat() < user["start_date"]:
+            continue
+        minutes_now = now.hour * 60 + now.minute
+        for kind, at in (("m", user["morning_time"]), ("e", user["evening_time"])):
+            delay = minutes_now - time_to_minutes(at)
+            if not 0 <= delay <= LATE_LIMIT_MINUTES or not db.claim_reminder(user["user_id"], kind, today):
+                continue
+            build = morning_message if kind == "m" else evening_message
+            await bot.send_message(user["user_id"], build(db, user), reply_markup=main_menu())
+            if kind == "m":
+                topic = db.next_todo(user["user_id"])
+                if topic:
+                    await bot.send_message(
+                        user["user_id"], "🎯 <b>Тема дня</b>\n\n" + render_lesson(topic["subject"], topic["title"]),
+                        reply_markup=lesson_kb(topic["id"], ai.enabled()), disable_web_page_preview=True,
+                    )
+
+
 async def reminder_loop(bot: Bot, db: Database) -> None:
-    sent: set[tuple[int, str, str]] = set()  # (user_id, kind, date)
     while True:
         try:
-            for user in db.all_users():
-                now = now_for(user)
-                hhmm, today = now.strftime("%H:%M"), now.date().isoformat()
-                if today < user["start_date"]:
-                    continue
-                for kind, at, build in (("m", user["morning_time"], morning_message),
-                                        ("e", user["evening_time"], evening_message)):
-                    key = (user["user_id"], kind, today)
-                    if hhmm == at and key not in sent:
-                        sent.add(key)
-                        await bot.send_message(user["user_id"], build(db, user), reply_markup=main_menu())
+            await send_due_reminders(bot, db)
         except Exception:
             log.exception("reminder loop failed")
-        await asyncio.sleep(20)
+        await asyncio.sleep(30)

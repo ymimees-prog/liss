@@ -1,0 +1,65 @@
+# Бесплатный хостинг 24/7 на PythonAnywhere
+
+Бот будет работать всегда, даже когда ноутбук выключен. Без карты и без оплаты.
+
+**Что нужно раз в месяц:** зайти на PythonAnywhere → вкладка **Web** → нажать кнопку продления
+(«Run until 1 month from today»). Иначе бесплатный сайт засыпает. Поставь себе напоминание!
+
+## 1. Регистрация
+1. Зайди на https://www.pythonanywhere.com → **Pricing & signup** → **Create a Beginner account** (бесплатно).
+2. Запомни свой логин — дальше вместо `ЛОГИН` подставляй его.
+
+## 2. Загрузи бота
+1. Вкладка **Files** → **Upload a file** → загрузи `akia-bot.zip`.
+2. Вкладка **Consoles** → **Bash**. Откроется чёрное окно, вставляй туда команды по одной:
+   ```bash
+   unzip akia-bot.zip
+   cd akia-bot
+   python3.11 -m pip install --user -r requirements.txt
+   cp .env.example .env
+   nano .env
+   ```
+3. В открывшемся редакторе впиши:
+   ```
+   BOT_TOKEN=твой_токен_от_BotFather
+   ALLOWED_USERS=твой_ID_из_userinfobot
+   TELEGRAM_PROXY=http://proxy.server:3128
+   DB_PATH=/home/ЛОГИН/akia-bot/liss.db
+   ```
+   Сохранить: **Ctrl+O**, Enter. Выйти: **Ctrl+X**.
+
+## 3. Создай веб-приложение
+1. Вкладка **Web** → **Add a new web app** → Next → **Manual configuration** → **Python 3.11** (важно: та же версия, что в командах) → Next.
+2. На странице приложения найди **WSGI configuration file** и нажми на ссылку `/var/www/ЛОГИН_pythonanywhere_com_wsgi.py`.
+3. Удали в файле ВСЁ и вставь (замени ЛОГИН):
+   ```python
+   import sys
+   sys.path.insert(0, "/home/ЛОГИН/akia-bot")
+   from bot.web import application
+   ```
+4. **Save**, вернись во вкладку **Web** и нажми зелёную кнопку **Reload**.
+5. Открой `https://ЛОГИН.pythonanywhere.com` — должно быть написано «Akia bot работает 🙂».
+
+## 4. Подключи Telegram к сайту
+В Bash-консоли:
+```bash
+cd ~/akia-bot
+python3.11 -m bot.set_webhook https://ЛОГИН.pythonanywhere.com
+```
+Должно появиться «✅ Вебхук установлен» и **ссылка для напоминаний** — скопируй её.
+
+Теперь открой бота в Telegram и нажми /start — он ответит 🎉
+
+## 5. Напоминания (утро/вечер + тема дня)
+1. Зарегистрируйся на https://cron-job.org (бесплатно).
+2. **Create cronjob** → вставь ссылку для напоминаний из шага 4 → расписание **Every 5 minutes** → Create.
+
+Готово! Бот работает 24/7, а напоминания приходят вовремя.
+
+## Если что-то не работает
+- Вкладка **Web** → **Error log** — там видно ошибки. Скриншот присылай.
+- После любых изменений файлов нажимай **Reload** во вкладке Web.
+- Хочешь снова запускать на ноутбуке — просто запусти `start.bat`, вебхук отключится сам.
+  Чтобы вернуться на хостинг, повтори шаг 4.
+- Кнопка «🤖 Объясни подробнее» на бесплатном PythonAnywhere может не работать: бесплатные аккаунты
+  пускают только на разрешённые сайты. Встроенные уроки работают всегда.

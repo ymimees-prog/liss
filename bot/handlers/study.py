@@ -1,12 +1,15 @@
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 
+from .. import ai
 from ..common import UserText, h, today_for
 from ..db import Database
-from ..keyboards import BTN_STUDY, area_choice, grid, inline, study_menu
+from ..keyboards import BTN_STUDY, area_choice, grid, inline, lesson_kb, study_menu
+from ..lessons import render_lesson, review_questions
 
 router = Router()
 
@@ -16,6 +19,10 @@ DEFAULT_SUBJECT = {"college": "Общее", "it": "IT"}
 
 class AddTopic(StatesGroup):
     text = State()
+
+
+class AskAI(StatesGroup):
+    question = State()
 
 
 def study_overview(db: Database, user) -> str:
@@ -34,7 +41,7 @@ def study_overview(db: Database, user) -> str:
 @router.message(F.text == BTN_STUDY)
 async def study_home(message: Message, state: FSMContext, db: Database, user):
     await state.clear()
-    await message.answer(study_overview(db, user), reply_markup=study_menu())
+    await message.answer(study_overview(db, user), reply_markup=study_menu(ai.enabled()))
 
 
 def topic_list(db: Database, user, area: str) -> tuple[str, object]:
@@ -117,7 +124,7 @@ async def due(cb: CallbackQuery, db: Database, user):
     )
     for t in topics[:15]:
         await cb.message.answer(
-            f"<i>{h(t['subject'])}</i>\n<b>{h(t['title'])}</b>",
+            f"<i>{h(t['subject'])}</i>\n<b>{h(t['title'])}</b>\n\n{review_questions(t['title'])}",
             reply_markup=inline([[("✅ Помню", f"st:rev:{t['id']}:1"), ("🤔 Забыла", f"st:rev:{t['id']}:0")]]),
         )
 
@@ -179,3 +186,82 @@ async def add_save(message: Message, state: FSMContext, db: Database, user):
     text, kb = topic_list(db, user, area)
     await message.answer(f"➕ Добавила тем: {len(added)}")
     await message.answer(text, reply_markup=kb)
+
+
+async def send_topic_of_day(message: Message, db: Database, user, after_id: int = 0) -> None:
+    topic = db.next_todo(user["user_id"], after_id)
+    if topic is None:
+        await message.answer(
+            "📭 Темы для изучения закончились. Добавь новые (📚 Учёба → ➕) "
+            "или загрузи стартовый план (💻 IT-развитие → 🚀)."
+        )
+        return
+    await message.answer("🎯 <b>Тема дня</b>\n\n" + render_lesson(topic["subject"], topic["title"]),
+                         reply_markup=lesson_kb(topic["id"], ai.enabled()), disable_web_page_preview=True)
+
+
+@router.callback_query(F.data == "st:today")
+async def topic_of_day(cb: CallbackQuery, db: Database, user):
+    await send_topic_of_day(cb.message, db, user)
+    await cb.answer()
+
+
+@router.callback_query(F.data.startswith("st:next:"))
+async def next_topic(cb: CallbackQuery, db: Database, user):
+    await send_topic_of_day(cb.message, db, user, after_id=int(cb.data.split(":")[2]))
+    await cb.answer()
+
+
+@router.callback_query(F.data.startswith("st:done:"))
+async def lesson_done(cb: CallbackQuery, db: Database, user):
+    topic = db.get_topic(user["user_id"], int(cb.data.split(":")[2]))
+    if topic is None or topic["status"] != "todo":
+        await cb.answer("Уже отмечено")
+        return
+    db.mark_learned(user["user_id"], topic["id"], today_for(user))
+    await cb.message.edit_reply_markup(reply_markup=inline([[("⏭ Следующая тема", f"st:next:{topic['id']}")]]))
+    await cb.message.answer(f"✅ «{h(topic['title'])}» разобрана! Напомню повторить завтра 💪")
+    await cb.answer()
+
+
+async def _answer_ai(message: Message, text: str) -> None:
+    try:
+        await message.answer(text)
+    except TelegramBadRequest:  # the model produced HTML Telegram can't parse
+        await message.answer(text, parse_mode=None)
+
+
+@router.callback_query(F.data.startswith("st:ai:"))
+async def explain_more(cb: CallbackQuery, db: Database, user):
+    topic = db.get_topic(user["user_id"], int(cb.data.split(":")[2]))
+    if topic is None or not ai.enabled():
+        await cb.answer("Нейросеть не подключена")
+        return
+    await cb.answer("Думаю… 🤖")
+    await cb.message.answer("🤖 Готовлю подробное объяснение, это займёт до минуты…")
+    answer = await ai.ask(
+        "Объясни эту тему подробнее, чем короткий урок: простыми словами, с примером, "
+        "типичными ошибками новичков и 3 задачами с ответами в конце.",
+        f"{topic['subject']}: {topic['title']}",
+    )
+    await _answer_ai(cb.message, answer)
+
+
+@router.callback_query(F.data.startswith("st:ask:"))
+async def ask_start(cb: CallbackQuery, state: FSMContext, db: Database, user):
+    if not ai.enabled():
+        await cb.answer("Нейросеть не подключена")
+        return
+    topic = db.get_topic(user["user_id"], int(cb.data.split(":")[2]))
+    await state.set_state(AskAI.question)
+    await state.update_data(topic=f"{topic['subject']}: {topic['title']}" if topic else None)
+    await cb.message.answer("❓ Напиши свой вопрос" + (f" по теме «{h(topic['title'])}»" if topic else "") + ":")
+    await cb.answer()
+
+
+@router.message(StateFilter(AskAI.question), UserText)
+async def ask_answer(message: Message, state: FSMContext):
+    topic = (await state.get_data()).get("topic")
+    await state.clear()
+    await message.answer("🤖 Думаю…")
+    await _answer_ai(message, await ai.ask(message.text, topic))

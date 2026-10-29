@@ -67,6 +67,12 @@ CREATE TABLE IF NOT EXISTS transactions (
     category  TEXT,
     note      TEXT
 );
+CREATE TABLE IF NOT EXISTS reminders_sent (
+    user_id  INTEGER NOT NULL,
+    kind     TEXT NOT NULL,
+    day      TEXT NOT NULL,
+    PRIMARY KEY (user_id, kind, day)
+);
 CREATE INDEX IF NOT EXISTS idx_topics_user ON topics(user_id, status);
 CREATE INDEX IF NOT EXISTS idx_tx_user_day ON transactions(user_id, day);
 """
@@ -108,6 +114,12 @@ class Database:
         assert fields.keys() <= allowed, fields.keys() - allowed
         cols = ", ".join(f"{k} = ?" for k in fields)
         self._exec(f"UPDATE users SET {cols} WHERE user_id = ?", (*fields.values(), user_id))
+
+    def claim_reminder(self, user_id: int, kind: str, day: date) -> bool:
+        """Marks a reminder as sent; False if it was already sent that day."""
+        cur = self._exec("INSERT OR IGNORE INTO reminders_sent (user_id, kind, day) VALUES (?, ?, ?)",
+                         (user_id, kind, day.isoformat()))
+        return cur.rowcount == 1
 
     # ---------- topics ----------
     def add_topic(self, user_id: int, area: str, subject: str, title: str, today: date) -> int:
@@ -165,6 +177,11 @@ class Database:
             "ORDER BY next_review, id",
             (user_id, today.isoformat()),
         )
+
+    def next_todo(self, user_id: int, after_id: int = 0) -> sqlite3.Row | None:
+        """Oldest topic to study after `after_id`, wrapping around to the start of the list."""
+        sql = "SELECT * FROM topics WHERE user_id = ? AND status = 'todo' AND id > ? ORDER BY id LIMIT 1"
+        return self._one(sql, (user_id, after_id)) or self._one(sql, (user_id, 0))
 
     def delete_topic(self, user_id: int, topic_id: int) -> None:
         self._exec("DELETE FROM topics WHERE user_id = ? AND id = ?", (user_id, topic_id))

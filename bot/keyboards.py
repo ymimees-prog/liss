@@ -37,12 +37,22 @@ def grid(items: list[tuple[str, str]], width: int = 2, extra: list[tuple[str, st
     return kb.as_markup()
 
 
-def study_menu() -> InlineKeyboardMarkup:
-    return inline([
-        [("🔁 Повторить сегодня", "st:due")],
+def study_menu(ai_enabled: bool = False) -> InlineKeyboardMarkup:
+    rows = [
+        [("🎯 Тема дня", "st:today"), ("🔁 Повторить сегодня", "st:due")],
         [("🏫 Темы колледжа", "st:list:college"), ("💻 IT-темы", "st:list:it")],
         [("➕ Добавить тему", "st:add")],
-    ])
+    ]
+    if ai_enabled:
+        rows.append([("🤖 Спросить нейросеть", "st:ask:0")])
+    return inline(rows)
+
+
+def lesson_kb(topic_id: int, ai_enabled: bool) -> InlineKeyboardMarkup:
+    rows = [[("✅ Разобрала", f"st:done:{topic_id}"), ("⏭ Другую тему", f"st:next:{topic_id}")]]
+    if ai_enabled:
+        rows.append([("🤖 Объясни подробнее", f"st:ai:{topic_id}"), ("❓ Задать вопрос", f"st:ask:{topic_id}")])
+    return inline(rows)
 
 
 def area_choice() -> InlineKeyboardMarkup:
