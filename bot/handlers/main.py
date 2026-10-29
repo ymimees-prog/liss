@@ -24,6 +24,7 @@ HELP = """<b>Что я умею</b>
 <b>Команды</b>
 /digest 09:00 — время утренней сводки (/digest off — выключить)
 /tz Europe/Moscow — часовой пояс
+/id — узнать свой Telegram ID
 /cancel — отменить ввод"""
 
 
@@ -39,6 +40,15 @@ async def start(message: Message, state: FSMContext, user):
         "2. 🎓 Обучение → 🎯 Тема дня\n"
         "3. 📓 Сделки — запиши первую демо-сделку\n\n" + HELP,
         reply_markup=main_menu(),
+    )
+
+
+@router.message(Command("id"))
+async def my_id(message: Message):
+    await message.answer(
+        f"Твой ID: <code>{message.from_user.id}</code>\n\n"
+        "Впиши его в файл .env в строку <code>ALLOWED_USERS=</code> и перезапусти бота — "
+        "тогда он будет отвечать только тебе."
     )
 
 

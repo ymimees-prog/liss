@@ -100,6 +100,7 @@ def test_learning(fake_api):
     async def scenario():
         h = Harness()
         assert "крипте и трейдинге" in await h.text("/start")
+        assert f"Твой ID: <code>{UID}</code>" in await h.text("/id")
         assert h.db.topic_counts(UID)["todo"] == len(ROADMAP)  # roadmap is loaded for a new user
 
         out = await h.text("🎓 Обучение")
