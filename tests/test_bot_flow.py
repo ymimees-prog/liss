@@ -16,7 +16,7 @@ from aiogram.types import CallbackQuery, Chat, Message, Update, User
 from bot import ai
 from bot.common import UserMiddleware
 from bot.db import Database
-from bot.handlers import college, diary, finance, it, main, study
+from bot.handlers import college, diary, finance, it, main, market, study
 from bot.lessons import LESSONS, render_lesson
 from bot.logic import ROADMAPS
 from bot.reminders import send_due_reminders
@@ -31,8 +31,10 @@ class FakeSession(BaseSession):
     def __init__(self):
         super().__init__()
         self.sent: list[str] = []
+        self.methods: list[TelegramMethod] = []
 
     async def make_request(self, bot, method: TelegramMethod, timeout=None):
+        self.methods.append(method)
         if isinstance(method, SendMessage):
             self.sent.append(method.text)
             return Message(message_id=len(self.sent), date=datetime.now(), chat=CHAT, text=method.text)
@@ -47,17 +49,30 @@ class FakeSession(BaseSession):
         yield b""
 
 
+_dp: Dispatcher | None = None
+_middleware = UserMiddleware(None, frozenset(), "Europe/Moscow")
+
+
+def _dispatcher() -> Dispatcher:
+    """Routers are module-level singletons and can be attached only once, so tests share one dispatcher."""
+    global _dp
+    if _dp is None:
+        _dp = Dispatcher(storage=MemoryStorage())
+        _dp.message.outer_middleware(_middleware)
+        _dp.callback_query.outer_middleware(_middleware)
+        _dp.include_routers(main.router, study.router, college.router, it.router, diary.router, finance.router,
+                            market.router)
+    return _dp
+
+
 class Harness:
     def __init__(self):
         self.db = Database(":memory:")
         self.session = FakeSession()
         self.bot = Bot("1:TEST", session=self.session)
-        self.dp = Dispatcher(storage=MemoryStorage())
+        self.dp = _dispatcher()
         self.dp["db"] = self.db
-        mw = UserMiddleware(self.db, frozenset(), "Europe/Moscow")
-        self.dp.message.outer_middleware(mw)
-        self.dp.callback_query.outer_middleware(mw)
-        self.dp.include_routers(main.router, study.router, college.router, it.router, diary.router, finance.router)
+        _middleware.db = self.db
         self.n = 0
 
     def _id(self):

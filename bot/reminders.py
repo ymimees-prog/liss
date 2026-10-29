@@ -79,10 +79,22 @@ async def send_due_reminders(bot: Bot, db: Database) -> None:
                     )
 
 
+async def periodic(bot: Bot, db: Database) -> None:
+    """Everything that runs on a timer: reminders and price alerts."""
+    from .handlers.market import check_alerts
+    from .market import MarketError
+
+    await send_due_reminders(bot, db)
+    try:
+        await check_alerts(bot, db)
+    except MarketError as e:
+        log.warning("price alerts skipped: %s", e)
+
+
 async def reminder_loop(bot: Bot, db: Database) -> None:
     while True:
         try:
-            await send_due_reminders(bot, db)
+            await periodic(bot, db)
         except Exception:
             log.exception("reminder loop failed")
         await asyncio.sleep(30)

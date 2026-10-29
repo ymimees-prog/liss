@@ -1,3 +1,4 @@
 aiogram==3.31.0
+matplotlib>=3.8
 # Optional: only needed for the "🤖 Объясни подробнее" button (ANTHROPIC_API_KEY)
 anthropic==2.3.0

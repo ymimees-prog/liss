@@ -73,6 +73,13 @@ CREATE TABLE IF NOT EXISTS reminders_sent (
     day      TEXT NOT NULL,
     PRIMARY KEY (user_id, kind, day)
 );
+CREATE TABLE IF NOT EXISTS price_alerts (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL,
+    asset      TEXT NOT NULL,
+    direction  TEXT NOT NULL,                 -- 'above' | 'below'
+    price      REAL NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_topics_user ON topics(user_id, status);
 CREATE INDEX IF NOT EXISTS idx_tx_user_day ON transactions(user_id, day);
 """
@@ -285,6 +292,19 @@ class Database:
 
     def finance_days(self, user_id: int) -> set[str]:
         return {r["day"] for r in self._all("SELECT DISTINCT day FROM transactions WHERE user_id = ?", (user_id,))}
+
+    # ---------- price alerts ----------
+    def add_alert(self, user_id: int, asset: str, direction: str, price: float) -> None:
+        self._exec("INSERT INTO price_alerts (user_id, asset, direction, price) VALUES (?, ?, ?, ?)",
+                   (user_id, asset, direction, price))
+
+    def alerts(self, user_id: int | None = None) -> list[sqlite3.Row]:
+        if user_id is None:
+            return self._all("SELECT * FROM price_alerts ORDER BY id")
+        return self._all("SELECT * FROM price_alerts WHERE user_id = ? ORDER BY id", (user_id,))
+
+    def delete_alert(self, user_id: int, alert_id: int) -> None:
+        self._exec("DELETE FROM price_alerts WHERE user_id = ? AND id = ?", (user_id, alert_id))
 
 
 def streak(days: set[str], today: date) -> int:

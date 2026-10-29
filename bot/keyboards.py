@@ -10,13 +10,14 @@ BTN_IT = "💻 IT-развитие"
 BTN_DIARY = "🌅 Дневник дня"
 BTN_MONEY = "💰 Финансы"
 BTN_PROGRESS = "📊 Прогресс"
+BTN_MARKET = "📈 Рынок"
 
 
 def main_menu() -> ReplyKeyboardMarkup:
     kb = ReplyKeyboardBuilder()
-    for text in (BTN_TODAY, BTN_PROGRESS, BTN_STUDY, BTN_COLLEGE, BTN_IT, BTN_DIARY, BTN_MONEY):
+    for text in (BTN_TODAY, BTN_PROGRESS, BTN_STUDY, BTN_COLLEGE, BTN_IT, BTN_DIARY, BTN_MONEY, BTN_MARKET):
         kb.button(text=text)
-    kb.adjust(2, 2, 2, 1)
+    kb.adjust(2, 2, 2, 2)
     return kb.as_markup(resize_keyboard=True)
 
 

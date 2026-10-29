@@ -1,7 +1,7 @@
 """Webhook mode for free hosting (PythonAnywhere): a plain WSGI app, no extra dependencies.
 
   POST /tg/<secret>    — updates from Telegram
-  GET  /tick/<secret>  — call every few minutes (e.g. from cron-job.org) to send reminders
+  GET  /tick/<secret>  — call every few minutes (e.g. from cron-job.org): reminders and price alerts
 """
 import asyncio
 import json
@@ -10,7 +10,7 @@ import threading
 
 from .app import build, webhook_secret
 from .config import load_config
-from .reminders import send_due_reminders
+from .reminders import periodic
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
@@ -38,7 +38,7 @@ def application(environ, start_response):
             update = json.loads(environ["wsgi.input"].read(size) or b"{}")
             _run(_dp.feed_webhook_update(_bot, update))
         elif path == f"/tick/{_secret}":
-            _run(send_due_reminders(_bot, _db))
+            _run(periodic(_bot, _db))
         else:
             status, body = "404 Not Found", "Akia bot работает 🙂".encode()
     except Exception:

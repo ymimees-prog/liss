@@ -7,9 +7,9 @@ from aiogram import BaseMiddleware, F
 from aiogram.types import TelegramObject, User
 
 from .db import Database
-from .keyboards import BTN_COLLEGE, BTN_DIARY, BTN_IT, BTN_MONEY, BTN_PROGRESS, BTN_STUDY, BTN_TODAY
+from .keyboards import BTN_COLLEGE, BTN_DIARY, BTN_IT, BTN_MARKET, BTN_MONEY, BTN_PROGRESS, BTN_STUDY, BTN_TODAY
 
-MENU_BUTTONS = {BTN_TODAY, BTN_STUDY, BTN_COLLEGE, BTN_IT, BTN_DIARY, BTN_MONEY, BTN_PROGRESS}
+MENU_BUTTONS = {BTN_TODAY, BTN_STUDY, BTN_COLLEGE, BTN_IT, BTN_DIARY, BTN_MONEY, BTN_PROGRESS, BTN_MARKET}
 
 # Free text typed by the user while a form is open (not a menu button, not a command).
 UserText = F.text & ~F.text.in_(MENU_BUTTONS) & ~F.text.startswith("/")
