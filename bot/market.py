@@ -10,6 +10,8 @@ from statistics import mean, pstdev
 
 import aiohttp
 
+from .logic import num
+
 log = logging.getLogger(__name__)
 
 
@@ -34,6 +36,9 @@ ASSETS: dict[str, Asset] = {a.code: a for a in [
     Asset("BTC", "₿ Биткоин", "cg", "bitcoin", "usd"),
     Asset("ETH", "◆ Эфир", "cg", "ethereum", "usd"),
     Asset("TON", "💎 TON", "cg", "the-open-network", "usd"),
+    Asset("SOL", "◎ Solana", "cg", "solana", "usd"),
+    Asset("BNB", "🔶 BNB", "cg", "binancecoin", "usd"),
+    Asset("XRP", "✕ XRP", "cg", "ripple", "usd"),
 ]}
 
 CG_URL = "https://api.coingecko.com/api/v3"
@@ -107,6 +112,7 @@ class Quote:
     asset: Asset
     price: float
     change_pct: float | None  # vs previous CBR day / last 24h
+    usd: float | None = None  # price in USD (crypto only) — for the portfolio
 
 
 async def quotes() -> dict[str, Quote]:
@@ -131,7 +137,7 @@ async def quotes() -> dict[str, Quote]:
         for a in cg_assets:
             row = data.get(a.source_id, {})
             if a.quote in row:
-                result[a.code] = Quote(a, float(row[a.quote]), row.get(f"{a.quote}_24h_change"))
+                result[a.code] = Quote(a, float(row[a.quote]), row.get(f"{a.quote}_24h_change"), row.get("usd"))
     except MarketError as e:
         errors.append(e)
     if not result and errors:
@@ -179,13 +185,7 @@ def rsi(values: list[float], n: int = 14) -> float | None:
 
 
 def fmt_price(x: float, unit: str) -> str:
-    if x >= 1000:
-        s = f"{x:,.0f}".replace(",", " ")
-    elif x >= 10:
-        s = f"{x:.2f}"
-    else:
-        s = f"{x:.4f}"
-    return f"{s.replace('.', ',')} {unit}"
+    return f"{num(x)} {unit}"
 
 
 def fmt_pct(x: float | None) -> str:

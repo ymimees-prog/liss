@@ -11,11 +11,11 @@ from aiogram.types import BotCommand
 from .common import UserMiddleware
 from .config import Config
 from .db import Database
-from .handlers import college, diary, finance, it, main, market, study
+from .handlers import learn, main, market, portfolio, trades
 
 COMMANDS = [
     BotCommand(command="start", description="Главное меню"),
-    BotCommand(command="week", description="Прогресс и отчёт за неделю"),
+    BotCommand(command="digest", description="Время утренней сводки"),
     BotCommand(command="help", description="Как пользоваться"),
     BotCommand(command="cancel", description="Отменить ввод"),
 ]
@@ -35,8 +35,7 @@ def build(config: Config) -> tuple[Bot, Dispatcher, Database]:
     middleware = UserMiddleware(db, config.allowed_users, config.tz)
     dp.message.outer_middleware(middleware)
     dp.callback_query.outer_middleware(middleware)
-    dp.include_routers(main.router, study.router, college.router, it.router, diary.router, finance.router,
-                       market.router)
+    dp.include_routers(main.router, market.router, portfolio.router, trades.router, learn.router)
     return bot, dp, db
 
 

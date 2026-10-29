@@ -1,24 +1,19 @@
 """SQLite storage. Dates are stored as ISO strings in the user's local timezone."""
 import sqlite3
-from datetime import date, timedelta
+from datetime import date
 
 from .logic import next_review
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
-    user_id       INTEGER PRIMARY KEY,
-    name          TEXT,
-    start_date    TEXT NOT NULL,
-    tz            TEXT NOT NULL,
-    morning_time  TEXT NOT NULL DEFAULT '07:30',
-    evening_time  TEXT NOT NULL DEFAULT '21:30',
-    goal_name     TEXT,
-    goal_amount   REAL
+    user_id      INTEGER PRIMARY KEY,
+    name         TEXT,
+    tz           TEXT NOT NULL,
+    digest_time  TEXT NOT NULL DEFAULT '09:00'   -- morning market digest; 'off' disables it
 );
 CREATE TABLE IF NOT EXISTS topics (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id       INTEGER NOT NULL,
-    area          TEXT NOT NULL,              -- 'college' | 'it'
     subject       TEXT NOT NULL,
     title         TEXT NOT NULL,
     status        TEXT NOT NULL DEFAULT 'todo', -- 'todo' | 'review' | 'mastered'
@@ -27,45 +22,6 @@ CREATE TABLE IF NOT EXISTS topics (
     review_stage  INTEGER NOT NULL DEFAULT 0,
     next_review   TEXT,
     reviews_done  INTEGER NOT NULL DEFAULT 0
-);
-CREATE TABLE IF NOT EXISTS attendance (
-    user_id  INTEGER NOT NULL,
-    day      TEXT NOT NULL,
-    status   TEXT NOT NULL,                   -- 'present' | 'late' | 'absent' | 'excused'
-    PRIMARY KEY (user_id, day)
-);
-CREATE TABLE IF NOT EXISTS it_sessions (
-    id       INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id  INTEGER NOT NULL,
-    day      TEXT NOT NULL,
-    skill    TEXT NOT NULL,
-    minutes  INTEGER NOT NULL,
-    note     TEXT
-);
-CREATE TABLE IF NOT EXISTS days (
-    user_id    INTEGER NOT NULL,
-    day        TEXT NOT NULL,
-    wake_time  TEXT,
-    mood       INTEGER,
-    emotions   TEXT,
-    note       TEXT,
-    PRIMARY KEY (user_id, day)
-);
-CREATE TABLE IF NOT EXISTS meals (
-    id       INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id  INTEGER NOT NULL,
-    day      TEXT NOT NULL,
-    kind     TEXT NOT NULL,
-    text     TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS transactions (
-    id        INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id   INTEGER NOT NULL,
-    day       TEXT NOT NULL,
-    kind      TEXT NOT NULL,                  -- 'income' | 'expense' | 'saving'
-    amount    REAL NOT NULL,                  -- 'saving' may be negative (taken from savings)
-    category  TEXT,
-    note      TEXT
 );
 CREATE TABLE IF NOT EXISTS reminders_sent (
     user_id  INTEGER NOT NULL,
@@ -80,8 +36,32 @@ CREATE TABLE IF NOT EXISTS price_alerts (
     direction  TEXT NOT NULL,                 -- 'above' | 'below'
     price      REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS portfolio_tx (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id  INTEGER NOT NULL,
+    day      TEXT NOT NULL,
+    asset    TEXT NOT NULL,
+    qty      REAL NOT NULL,                   -- + bought, - sold
+    price    REAL NOT NULL                    -- in USD per coin
+);
+CREATE TABLE IF NOT EXISTS trades (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL,
+    asset      TEXT NOT NULL,
+    side       TEXT NOT NULL,                 -- 'long' | 'short'
+    demo       INTEGER NOT NULL DEFAULT 1,
+    entry      REAL NOT NULL,
+    stop       REAL NOT NULL,
+    take       REAL,
+    qty        REAL NOT NULL,
+    reason     TEXT,
+    opened_on  TEXT NOT NULL,
+    exit       REAL,                          -- NULL while the trade is open
+    closed_on  TEXT,
+    lesson     TEXT                           -- what the trader learned / felt after closing
+);
 CREATE INDEX IF NOT EXISTS idx_topics_user ON topics(user_id, status);
-CREATE INDEX IF NOT EXISTS idx_tx_user_day ON transactions(user_id, day);
+CREATE INDEX IF NOT EXISTS idx_trades_user ON trades(user_id, exit);
 """
 
 
@@ -110,14 +90,13 @@ class Database:
     def all_users(self) -> list[sqlite3.Row]:
         return self._all("SELECT * FROM users")
 
-    def create_user(self, user_id: int, name: str, start: date, tz: str) -> None:
-        self._exec(
-            "INSERT OR IGNORE INTO users (user_id, name, start_date, tz) VALUES (?, ?, ?, ?)",
-            (user_id, name, start.isoformat(), tz),
-        )
+    def create_user(self, user_id: int, name: str, tz: str) -> bool:
+        """Returns True if the user is new."""
+        cur = self._exec("INSERT OR IGNORE INTO users (user_id, name, tz) VALUES (?, ?, ?)", (user_id, name, tz))
+        return cur.rowcount == 1
 
     def update_user(self, user_id: int, **fields) -> None:
-        allowed = {"name", "start_date", "tz", "morning_time", "evening_time", "goal_name", "goal_amount"}
+        allowed = {"name", "tz", "digest_time"}
         assert fields.keys() <= allowed, fields.keys() - allowed
         cols = ", ".join(f"{k} = ?" for k in fields)
         self._exec(f"UPDATE users SET {cols} WHERE user_id = ?", (*fields.values(), user_id))
@@ -128,30 +107,20 @@ class Database:
                          (user_id, kind, day.isoformat()))
         return cur.rowcount == 1
 
-    # ---------- topics ----------
-    def add_topic(self, user_id: int, area: str, subject: str, title: str, today: date) -> int:
-        cur = self._exec(
-            "INSERT INTO topics (user_id, area, subject, title, created_on) VALUES (?, ?, ?, ?, ?)",
-            (user_id, area, subject, title, today.isoformat()),
-        )
+    # ---------- learning topics ----------
+    def add_topic(self, user_id: int, subject: str, title: str, today: date) -> int:
+        cur = self._exec("INSERT INTO topics (user_id, subject, title, created_on) VALUES (?, ?, ?, ?)",
+                         (user_id, subject, title, today.isoformat()))
         return cur.lastrowid
 
     def get_topic(self, user_id: int, topic_id: int) -> sqlite3.Row | None:
         return self._one("SELECT * FROM topics WHERE user_id = ? AND id = ?", (user_id, topic_id))
 
-    def topics(self, user_id: int, area: str, status: str) -> list[sqlite3.Row]:
-        return self._all(
-            "SELECT * FROM topics WHERE user_id = ? AND area = ? AND status = ? ORDER BY id",
-            (user_id, area, status),
-        )
+    def topics(self, user_id: int, status: str) -> list[sqlite3.Row]:
+        return self._all("SELECT * FROM topics WHERE user_id = ? AND status = ? ORDER BY id", (user_id, status))
 
-    def topic_counts(self, user_id: int, area: str | None = None) -> dict[str, int]:
-        sql = "SELECT status, COUNT(*) c FROM topics WHERE user_id = ?"
-        params: tuple = (user_id,)
-        if area:
-            sql += " AND area = ?"
-            params += (area,)
-        rows = self._all(sql + " GROUP BY status", params)
+    def topic_counts(self, user_id: int) -> dict[str, int]:
+        rows = self._all("SELECT status, COUNT(*) c FROM topics WHERE user_id = ? GROUP BY status", (user_id,))
         counts = {"todo": 0, "review": 0, "mastered": 0}
         counts.update({r["status"]: r["c"] for r in rows})
         return counts
@@ -193,106 +162,6 @@ class Database:
     def delete_topic(self, user_id: int, topic_id: int) -> None:
         self._exec("DELETE FROM topics WHERE user_id = ? AND id = ?", (user_id, topic_id))
 
-    # ---------- attendance ----------
-    def set_attendance(self, user_id: int, day: date, status: str) -> None:
-        self._exec(
-            "INSERT INTO attendance (user_id, day, status) VALUES (?, ?, ?) "
-            "ON CONFLICT(user_id, day) DO UPDATE SET status = excluded.status",
-            (user_id, day.isoformat(), status),
-        )
-
-    def get_attendance(self, user_id: int, day: date) -> str | None:
-        row = self._one("SELECT status FROM attendance WHERE user_id = ? AND day = ?", (user_id, day.isoformat()))
-        return row["status"] if row else None
-
-    def attendance_stats(self, user_id: int, since: date, until: date) -> dict[str, int]:
-        rows = self._all(
-            "SELECT status, COUNT(*) c FROM attendance WHERE user_id = ? AND day BETWEEN ? AND ? GROUP BY status",
-            (user_id, since.isoformat(), until.isoformat()),
-        )
-        stats = {"present": 0, "late": 0, "absent": 0, "excused": 0}
-        stats.update({r["status"]: r["c"] for r in rows})
-        return stats
-
-    # ---------- IT sessions ----------
-    def add_session(self, user_id: int, day: date, skill: str, minutes: int, note: str | None) -> None:
-        self._exec(
-            "INSERT INTO it_sessions (user_id, day, skill, minutes, note) VALUES (?, ?, ?, ?, ?)",
-            (user_id, day.isoformat(), skill, minutes, note),
-        )
-
-    def minutes_by_skill(self, user_id: int, since: date, until: date) -> dict[str, int]:
-        rows = self._all(
-            "SELECT skill, SUM(minutes) m FROM it_sessions WHERE user_id = ? AND day BETWEEN ? AND ? "
-            "GROUP BY skill ORDER BY m DESC",
-            (user_id, since.isoformat(), until.isoformat()),
-        )
-        return {r["skill"]: r["m"] for r in rows}
-
-    def study_days(self, user_id: int) -> set[str]:
-        return {r["day"] for r in self._all("SELECT DISTINCT day FROM it_sessions WHERE user_id = ?", (user_id,))}
-
-    # ---------- diary ----------
-    def _ensure_day(self, user_id: int, day: date) -> None:
-        self._exec("INSERT OR IGNORE INTO days (user_id, day) VALUES (?, ?)", (user_id, day.isoformat()))
-
-    def set_day(self, user_id: int, day: date, **fields) -> None:
-        assert fields.keys() <= {"wake_time", "mood", "emotions", "note"}
-        self._ensure_day(user_id, day)
-        cols = ", ".join(f"{k} = ?" for k in fields)
-        self._exec(f"UPDATE days SET {cols} WHERE user_id = ? AND day = ?", (*fields.values(), user_id, day.isoformat()))
-
-    def get_day(self, user_id: int, day: date) -> sqlite3.Row | None:
-        return self._one("SELECT * FROM days WHERE user_id = ? AND day = ?", (user_id, day.isoformat()))
-
-    def days_between(self, user_id: int, since: date, until: date) -> list[sqlite3.Row]:
-        return self._all(
-            "SELECT * FROM days WHERE user_id = ? AND day BETWEEN ? AND ? ORDER BY day",
-            (user_id, since.isoformat(), until.isoformat()),
-        )
-
-    def add_meal(self, user_id: int, day: date, kind: str, text: str) -> None:
-        self._exec("INSERT INTO meals (user_id, day, kind, text) VALUES (?, ?, ?, ?)", (user_id, day.isoformat(), kind, text))
-
-    def meals(self, user_id: int, day: date) -> list[sqlite3.Row]:
-        return self._all("SELECT * FROM meals WHERE user_id = ? AND day = ? ORDER BY id", (user_id, day.isoformat()))
-
-    def logged_days(self, user_id: int) -> set[str]:
-        """Days where the diary was filled (mood set) — used for the streak."""
-        return {r["day"] for r in self._all("SELECT day FROM days WHERE user_id = ? AND mood IS NOT NULL", (user_id,))}
-
-    # ---------- finance ----------
-    def add_tx(self, user_id: int, day: date, kind: str, amount: float, category: str | None, note: str | None) -> None:
-        self._exec(
-            "INSERT INTO transactions (user_id, day, kind, amount, category, note) VALUES (?, ?, ?, ?, ?, ?)",
-            (user_id, day.isoformat(), kind, amount, category, note),
-        )
-
-    def last_tx(self, user_id: int, limit: int = 10) -> list[sqlite3.Row]:
-        return self._all("SELECT * FROM transactions WHERE user_id = ? ORDER BY id DESC LIMIT ?", (user_id, limit))
-
-    def delete_tx(self, user_id: int, tx_id: int) -> None:
-        self._exec("DELETE FROM transactions WHERE user_id = ? AND id = ?", (user_id, tx_id))
-
-    def tx_total(self, user_id: int, kind: str, since: date | None = None, until: date | None = None) -> float:
-        sql = "SELECT COALESCE(SUM(amount), 0) s FROM transactions WHERE user_id = ? AND kind = ?"
-        params: tuple = (user_id, kind)
-        if since and until:
-            sql += " AND day BETWEEN ? AND ?"
-            params += (since.isoformat(), until.isoformat())
-        return self._one(sql, params)["s"]
-
-    def expenses_by_category(self, user_id: int, since: date, until: date) -> dict[str, float]:
-        rows = self._all(
-            "SELECT category, SUM(amount) s FROM transactions WHERE user_id = ? AND kind = 'expense' "
-            "AND day BETWEEN ? AND ? GROUP BY category ORDER BY s DESC",
-            (user_id, since.isoformat(), until.isoformat()),
-        )
-        return {r["category"]: r["s"] for r in rows}
-
-    def finance_days(self, user_id: int) -> set[str]:
-        return {r["day"] for r in self._all("SELECT DISTINCT day FROM transactions WHERE user_id = ?", (user_id,))}
-
     # ---------- price alerts ----------
     def add_alert(self, user_id: int, asset: str, direction: str, price: float) -> None:
         self._exec("INSERT INTO price_alerts (user_id, asset, direction, price) VALUES (?, ?, ?, ?)",
@@ -306,12 +175,47 @@ class Database:
     def delete_alert(self, user_id: int, alert_id: int) -> None:
         self._exec("DELETE FROM price_alerts WHERE user_id = ? AND id = ?", (user_id, alert_id))
 
+    # ---------- portfolio ----------
+    def add_portfolio_tx(self, user_id: int, day: date, asset: str, qty: float, price: float) -> None:
+        self._exec("INSERT INTO portfolio_tx (user_id, day, asset, qty, price) VALUES (?, ?, ?, ?, ?)",
+                   (user_id, day.isoformat(), asset, qty, price))
 
-def streak(days: set[str], today: date) -> int:
-    """Consecutive days ending today (or yesterday, if today isn't logged yet)."""
-    d = today if today.isoformat() in days else today - timedelta(days=1)
-    n = 0
-    while d.isoformat() in days:
-        n += 1
-        d -= timedelta(days=1)
-    return n
+    def portfolio_txs(self, user_id: int) -> list[sqlite3.Row]:
+        return self._all("SELECT * FROM portfolio_tx WHERE user_id = ? ORDER BY id", (user_id,))
+
+    def delete_portfolio_tx(self, user_id: int, tx_id: int) -> None:
+        self._exec("DELETE FROM portfolio_tx WHERE user_id = ? AND id = ?", (user_id, tx_id))
+
+    # ---------- trade journal ----------
+    def open_trade(self, user_id: int, day: date, asset: str, side: str, demo: bool, entry: float,
+                   stop: float, take: float | None, qty: float, reason: str | None) -> int:
+        cur = self._exec(
+            "INSERT INTO trades (user_id, asset, side, demo, entry, stop, take, qty, reason, opened_on) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (user_id, asset, side, int(demo), entry, stop, take, qty, reason, day.isoformat()),
+        )
+        return cur.lastrowid
+
+    def get_trade(self, user_id: int, trade_id: int) -> sqlite3.Row | None:
+        return self._one("SELECT * FROM trades WHERE user_id = ? AND id = ?", (user_id, trade_id))
+
+    def open_trades(self, user_id: int) -> list[sqlite3.Row]:
+        return self._all("SELECT * FROM trades WHERE user_id = ? AND exit IS NULL ORDER BY id", (user_id,))
+
+    def closed_trades(self, user_id: int, demo: bool | None = None) -> list[sqlite3.Row]:
+        sql = "SELECT * FROM trades WHERE user_id = ? AND exit IS NOT NULL"
+        params: tuple = (user_id,)
+        if demo is not None:
+            sql += " AND demo = ?"
+            params += (int(demo),)
+        return self._all(sql + " ORDER BY closed_on, id", params)
+
+    def close_trade(self, user_id: int, trade_id: int, exit_price: float, day: date) -> None:
+        self._exec("UPDATE trades SET exit = ?, closed_on = ? WHERE user_id = ? AND id = ? AND exit IS NULL",
+                   (exit_price, day.isoformat(), user_id, trade_id))
+
+    def set_trade_lesson(self, user_id: int, trade_id: int, lesson: str) -> None:
+        self._exec("UPDATE trades SET lesson = ? WHERE user_id = ? AND id = ?", (lesson, user_id, trade_id))
+
+    def delete_trade(self, user_id: int, trade_id: int) -> None:
+        self._exec("DELETE FROM trades WHERE user_id = ? AND id = ?", (user_id, trade_id))

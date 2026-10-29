@@ -1,169 +1,48 @@
-"""Pure helpers: challenge math, spaced repetition, finance advice. No Telegram, no DB."""
+"""Pure helpers: trading math, spaced repetition, parsing. No Telegram, no DB."""
 import random
 import re
+from dataclasses import dataclass
 from datetime import date, timedelta
-
-CHALLENGE_DAYS = 90
 
 # Spaced repetition: days until the next review after each successful recall.
 REVIEW_INTERVALS = [1, 3, 7, 14, 30, 60]
 
-EXPENSE_CATEGORIES = {
-    "food": "🍔 Еда",
-    "transport": "🚌 Транспорт",
-    "study": "📚 Учёба",
-    "phone": "📱 Связь/подписки",
-    "health": "💊 Здоровье",
-    "home": "🏠 Дом/быт",
-    "fun": "🎉 Развлечения",
-    "clothes": "👗 Одежда/красота",
-    "cafe": "☕ Кафе/доставка",
-    "other": "📦 Другое",
-}
-# For the 50/30/20 rule: what counts as a necessity. Everything else is a "want".
-NEEDS = {"food", "transport", "study", "phone", "health", "home"}
-
-IT_SKILLS = {
-    "python": "🐍 Python",
-    "git": "🐙 Git/GitHub",
-    "algo": "🧠 Алгоритмы",
-    "sql": "🗄 SQL/БД",
-    "linux": "🐧 Linux/терминал",
-    "web": "🌐 Веб/HTML/CSS",
-    "english": "🇬🇧 Английский",
-    "ai": "🤖 Нейросети/Claude",
-    "osint": "🕵️ OSINT",
-    "trading": "📈 Трейдинг",
-    "project": "🛠 Свой проект",
-    "other": "📦 Другое",
-}
-
-EMOTIONS = [
-    "😊 радость", "😌 спокойствие", "💪 уверенность", "🔥 азарт", "🙏 благодарность",
-    "😴 усталость", "😰 тревога", "😤 злость", "😢 грусть", "😐 апатия", "🤯 перегруз", "🥰 любовь",
+ROADMAP = [
+    ("Основы", "Правило №1: сначала подушка безопасности, торгуем только свободными деньгами"),
+    ("Основы", "Биржа, брокер, акции, облигации, фонды, криптовалюта — в чём разница"),
+    ("Крипта", "Блокчейн, биткоин и стейблкоины: что такое USDT"),
+    ("Крипта", "Кошельки: биржевой и свой, сид-фраза и как её хранить"),
+    ("Крипта", "Как купить USDT: биржа, P2P и как не потерять деньги и карту"),
+    ("Основы", "Инвестиции vs трейдинг: почему большинство трейдеров теряют деньги"),
+    ("Крипта", "Спот, фьючерсы, плечо и ликвидация"),
+    ("Крипта", "Типы ордеров: рыночный, лимитный, стоп-лосс, тейк-профит"),
+    ("Анализ", "Свечной график, таймфреймы, объём"),
+    ("Анализ", "Тренд, уровни поддержки и сопротивления"),
+    ("Анализ", "Индикаторы: скользящие средние и RSI"),
+    ("Риск", "Риск-менеджмент: не больше 1–2% депозита на сделку, стоп-лосс"),
+    ("Риск", "Психология: FOMO, жадность, страх, отыгрыш"),
+    ("Риск", "Торговый план и дневник сделок"),
+    ("Практика", "Демо-счёт: 30 сделок на виртуальных деньгах, без реальных"),
+    ("Практика", "DCA: покупка частями вместо попытки поймать дно"),
+    ("Право", "Налоги с дохода от торговли"),
+    ("Право", "Мошенники: «сигналы», «гарантированный доход», пирамиды"),
+    ("Код", "Скрипт на Python: скачать котировки и построить график"),
 ]
 
-MOODS = {1: "😞", 2: "😕", 3: "😐", 4: "🙂", 5: "🤩"}
-
-MEAL_KINDS = {"breakfast": "🍳 Завтрак", "lunch": "🍲 Обед", "dinner": "🍝 Ужин", "snack": "🍎 Перекус"}
-
-ATTENDANCE = {"present": "✅ Была", "late": "⏰ Опоздала", "absent": "❌ Пропустила", "excused": "🤒 Уважительная"}
-
-PYTHON_ROADMAP = [
-    ("Python", "Установка Python, VS Code/PyCharm, первый скрипт"),
-    ("Python", "Переменные и типы данных: int, float, str, bool"),
-    ("Python", "Ввод/вывод, f-строки"),
-    ("Python", "Условия if/elif/else"),
-    ("Python", "Циклы for и while"),
-    ("Python", "Списки, кортежи"),
-    ("Python", "Словари и множества"),
-    ("Python", "Функции, аргументы, return"),
-    ("Python", "Работа со строками и методами"),
-    ("Python", "Исключения try/except"),
-    ("Python", "Файлы: чтение и запись"),
-    ("Python", "Модули, pip, виртуальное окружение venv"),
-    ("Python", "ООП: классы и объекты"),
-    ("Python", "ООП: наследование, инкапсуляция"),
-    ("Python", "List/dict comprehensions"),
-    ("Git", "Что такое Git, установка, git config"),
-    ("Git", "git init, add, commit, status, log"),
-    ("Git", "Ветки: branch, checkout/switch, merge"),
-    ("GitHub", "Аккаунт, репозиторий, git clone/push/pull"),
-    ("GitHub", "Pull Request и code review"),
-    ("GitHub", "README.md и оформление профиля"),
-    ("Проект", "Свой мини-проект на Python и выложить на GitHub"),
+TIPS = [
+    "Правило 1%: в одной сделке рискуй не больше 1% депозита. 10 убыточных сделок подряд — и ты потеряла всего ~10%.",
+    "Стоп-лосс ставится ДО входа в сделку, а не когда «уже страшно».",
+    "Нет плана — нет сделки. Запиши вход, стоп и цель до того, как нажать кнопку.",
+    "После 2 убыточных сделок подряд — перерыв до завтра. Так ты не уйдёшь в отыгрыш.",
+    "Плечо не увеличивает прибыль — оно увеличивает скорость, с которой ты теряешь депозит.",
+    "Если не понимаешь, почему растёт монета, — ты не инвестор, ты пассажир.",
+    "«Гарантированный доход», «сигналы за деньги», «удвой депозит» — почти всегда мошенники.",
+    "Храни сид-фразу только на бумаге. Никогда — в заметках, скриншотах или чатах.",
+    "На P2P проверяй поступление денег в приложении банка, а не по скриншоту от продавца.",
+    "Лучшая сделка иногда — не входить в сделку.",
+    "Записывай эмоции в дневник сделок: через месяц увидишь, какие из них стоят тебе денег.",
+    "Торгуй только деньгами, потерю которых переживёшь спокойно. Подушка безопасности — неприкосновенна.",
 ]
-
-AI_ROADMAP = [
-    ("Нейросети", "Что такое LLM: токены, контекст, почему модель «галлюцинирует»"),
-    ("Нейросети", "Промптинг: роль, контекст, примеры, формат ответа"),
-    ("Нейросети", "Claude: чат, проекты, артефакты — как использовать для учёбы"),
-    ("Нейросети", "Claude Code: как ИИ пишет и правит код вместе с тобой"),
-    ("Нейросети", "Как проверять ответы ИИ и не копировать код, не понимая его"),
-    ("Нейросети", "Claude API: ключ, первый запрос из Python (пакет anthropic)"),
-    ("Нейросети", "Tool use: как дать модели вызывать твои функции"),
-    ("Нейросети", "RAG: ответы по своим документам"),
-    ("Нейросети", "Основы ML: обучение с учителем, датасет, train/test"),
-    ("Нейросети", "Нейрон, слои, функция потерь, градиентный спуск — на пальцах"),
-    ("Проект", "Подключить Claude к своему Telegram-боту (умные советы)"),
-]
-
-OSINT_ROADMAP = [
-    ("OSINT", "Что такое OSINT, этика и закон: только открытые данные и только с разрешения"),
-    ("OSINT", "Цифровая гигиена: проверь, что о ТЕБЕ можно найти в сети"),
-    ("OSINT", "Продвинутый поиск: операторы Google (site:, filetype:, \"\")"),
-    ("OSINT", "Поиск по изображениям и проверка фото (обратный поиск)"),
-    ("OSINT", "Метаданные файлов (EXIF) и как их удалять"),
-    ("OSINT", "Геолокация по фото: улики на снимке"),
-    ("OSINT", "Проверка фактов и фейков: источники, даты, архивы (Wayback Machine)"),
-    ("OSINT", "Домены и сайты: WHOIS, DNS, история сайта"),
-    ("OSINT", "Автоматизация OSINT на Python: requests, парсинг"),
-    ("OSINT", "CTF/учебные задачки по OSINT для практики"),
-]
-
-TRADING_ROADMAP = [
-    ("Трейдинг", "Правило №1: сначала подушка безопасности, торгуем только свободными деньгами"),
-    ("Трейдинг", "Биржа, брокер, акции, облигации, фонды, криптовалюта — в чём разница"),
-    ("Трейдинг", "Инвестиции vs трейдинг: почему большинство трейдеров теряют деньги"),
-    ("Трейдинг", "Свечной график, таймфреймы, объём"),
-    ("Трейдинг", "Тренд, уровни поддержки и сопротивления"),
-    ("Трейдинг", "Риск-менеджмент: не больше 1–2% депозита на сделку, стоп-лосс"),
-    ("Трейдинг", "Психология: FOMO, жадность, страх, отыгрыш"),
-    ("Трейдинг", "Торговый план и дневник сделок"),
-    ("Трейдинг", "Демо-счёт: 30 сделок на виртуальных деньгах, без реальных"),
-    ("Трейдинг", "Налоги с дохода от торговли"),
-    ("Трейдинг", "Мошенники: «сигналы», «гарантированный доход», пирамиды"),
-    ("Проект", "Скрипт на Python: скачать котировки и построить график"),
-]
-
-ROADMAPS = {
-    "python": ("🐍 Python + GitHub", "от основ Python до первого проекта на GitHub", PYTHON_ROADMAP),
-    "ai": ("🤖 Нейросети и Claude", "от промптинга до своего ИИ-бота на Claude API", AI_ROADMAP),
-    "osint": ("🕵️ OSINT", "разведка по открытым источникам — этично и законно", OSINT_ROADMAP),
-    "trading": ("📈 Трейдинг", "основы рынка, риск-менеджмент и демо-счёт", TRADING_ROADMAP),
-}
-
-FINANCE_TIPS = [
-    "Сначала заплати себе: как только пришли деньги — сразу отложи 10–20% в копилку, а не «что останется».",
-    "Правило 50/30/20: 50% дохода — на необходимое, 30% — на желания, 20% — в накопления.",
-    "Правило 24 часов: хочешь купить что-то не из списка — подожди сутки. Половина желаний пройдёт.",
-    "Финансовая подушка — это 3–6 месяцев твоих расходов. Это первая цель перед любыми инвестициями.",
-    "Маленькие траты съедают больше всего: кофе за 200 ₽ каждый день — это 6000 ₽ в месяц.",
-    "Держи накопления на отдельном накопительном счёте/вкладе — с процентом и подальше от карты для трат.",
-    "Проверь подписки: часто мы платим за то, чем не пользуемся.",
-    "Не бери кредиты и рассрочки на желания. Долг — это деньги из твоего будущего.",
-    "Ставь цель с суммой и датой: «30 000 ₽ на ноутбук к марту» мотивирует сильнее, чем «накопить».",
-    "Записывай ВСЕ траты хотя бы месяц — без этого невозможно понять, куда утекают деньги.",
-    "Лучшая инвестиция сейчас — в себя: навыки программиста потом вырастят твой доход в разы.",
-    "Трейдинг — не способ быстро разбогатеть. Сначала подушка, потом демо-счёт, и только потом свободные деньги.",
-    "Никогда не торгуй на деньги, которые нужны на еду, учёбу или уже лежат в копилке на цель.",
-    "«Гарантированный доход», «сигналы за деньги», «удвой депозит» — это почти всегда мошенники.",
-    "Покупай по списку и не ходи в магазин голодной — это реально экономит.",
-    "Если доход вырос — не увеличивай траты сразу. Увеличь процент накоплений.",
-]
-
-MOTIVATION = [
-    "Дисциплина — это выбирать между тем, чего хочешь сейчас, и тем, чего хочешь больше всего.",
-    "Не нужно быть идеальной. Нужно просто не пропускать два дня подряд.",
-    "Каждый закоммиченный день — это кирпич в твоё будущее.",
-    "Через 90 дней ты будешь рада, что начала сегодня.",
-    "Маленькие шаги каждый день лучше, чем большие рывки раз в месяц.",
-    "Ты не соревнуешься ни с кем, кроме себя вчерашней.",
-    "Программист — это человек, который не сдался на ошибке.",
-]
-
-
-def challenge_day(start: date, today: date) -> int:
-    """1-based day of the challenge (can exceed 90 once it's over, 0 if not started)."""
-    if today < start:
-        return 0
-    return (today - start).days + 1
-
-
-def progress_bar(value: float, total: float, width: int = 10) -> str:
-    ratio = 0 if total <= 0 else max(0.0, min(1.0, value / total))
-    filled = round(ratio * width)
-    return "▓" * filled + "░" * (width - filled) + f" {ratio * 100:.0f}%"
 
 
 def next_review(stage: int, today: date) -> date | None:
@@ -173,18 +52,13 @@ def next_review(stage: int, today: date) -> date | None:
     return today + timedelta(days=REVIEW_INTERVALS[stage])
 
 
-_AMOUNT_RE = re.compile(r"^\s*(\d+(?:[.,]\d{1,2})?)\s*(?:₽|р\.?|руб\.?)?\s*(.*)$", re.IGNORECASE)
+_NUMBER_RE = re.compile(r"\d+(?:[.,]\d+)?")
 
 
-def parse_amount(text: str) -> tuple[float, str] | None:
-    """'350 кофе' -> (350.0, 'кофе'); '1 200,50' is not supported, keep it simple."""
-    m = _AMOUNT_RE.match(text or "")
-    if not m:
-        return None
-    amount = float(m.group(1).replace(",", "."))
-    if amount <= 0:
-        return None
-    return amount, m.group(2).strip()
+def parse_numbers(text: str) -> list[float]:
+    """'95 000 93000,5 0.01' -> [95000.0, 93000.5, 0.01]. A space between thousands is joined."""
+    text = re.sub(r"(?<=\d) (?=\d{3}(?!\d))", "", text or "")
+    return [float(x.replace(",", ".")) for x in _NUMBER_RE.findall(text)]
 
 
 _TIME_RE = re.compile(r"^\s*(\d{1,2})[:.](\d{2})\s*$")
@@ -206,70 +80,102 @@ def time_to_minutes(hhmm: str) -> int:
     return int(h) * 60 + int(m)
 
 
-def minutes_to_time(total: float) -> str:
-    total = round(total)
-    return f"{total // 60:02d}:{total % 60:02d}"
-
-
-def money(x: float) -> str:
-    s = f"{x:,.2f}".replace(",", " ").replace(".00", "")
-    return s.replace(".", ",") + " ₽"
-
-
-def budget_503020(income: float) -> dict[str, float]:
-    return {"needs": income * 0.5, "wants": income * 0.3, "savings": income * 0.2}
-
-
-def finance_advice(income: float, expenses_by_cat: dict[str, float], saved: float) -> list[str]:
-    """Plain-language observations about a month of money."""
-    advice = []
-    spent = sum(expenses_by_cat.values())
-    if income <= 0:
-        if spent:
-            advice.append("Доходов в этом месяце не записано — добавь их, чтобы я смогла посчитать бюджет 50/30/20.")
-        return advice
-    plan = budget_503020(income)
-    needs = sum(v for k, v in expenses_by_cat.items() if k in NEEDS)
-    wants = spent - needs
-    if wants > plan["wants"]:
-        advice.append(f"На желания ушло {money(wants)} — это больше 30% дохода ({money(plan['wants'])}). Попробуй правило 24 часов.")
-    if saved < plan["savings"]:
-        advice.append(f"Отложено {money(saved)} из рекомендуемых {money(plan['savings'])} (20%). Осталось {money(plan['savings'] - saved)}.")
+def num(x: float) -> str:
+    """Human number: 95 000 / 97,40 / 0,0052."""
+    if abs(x) >= 1000:
+        s = f"{x:,.2f}".rstrip("0").rstrip(".").replace(",", " ")
+    elif abs(x) >= 10:
+        s = f"{x:.2f}"
+    elif abs(x) >= 1:
+        s = f"{x:.3f}".rstrip("0").rstrip(".")
     else:
-        advice.append(f"Ты отложила {money(saved)} — это {saved / income * 100:.0f}% дохода. Отличная работа! 🎉")
-    if spent + saved > income:
-        advice.append("⚠️ Расходы и накопления больше дохода — ты тратишь больше, чем зарабатываешь.")
-    if expenses_by_cat:
-        top = max(expenses_by_cat, key=expenses_by_cat.get)
-        advice.append(f"Самая большая статья расходов — {EXPENSE_CATEGORIES.get(top, top)}: {money(expenses_by_cat[top])}.")
-    return advice
+        s = f"{x:.6f}".rstrip("0").rstrip(".") or "0"
+    return s.replace(".", ",")
 
 
-def wake_mood_insight(days: list[tuple[str, int]]) -> str | None:
-    """days = [(wake 'HH:MM', mood 1..5)]. Compares mood on early vs late wake-ups."""
-    if len(days) < 4:
-        return None
-    mins = sorted(time_to_minutes(w) for w, _ in days)
-    median = mins[len(mins) // 2]
-    early = [m for w, m in days if time_to_minutes(w) < median]
-    late = [m for w, m in days if time_to_minutes(w) >= median]
-    if not early or not late:
-        return None
-    e, l_ = sum(early) / len(early), sum(late) / len(late)
-    if abs(e - l_) < 0.5:
-        return "Время подъёма пока почти не влияет на твоё настроение."
-    when = "раньше" if e > l_ else "позже"
-    return (f"Когда ты встаёшь {when} {minutes_to_time(median)}, настроение в среднем выше "
-            f"({max(e, l_):.1f} против {min(e, l_):.1f}). Интересно, правда?")
+def pct(x: float) -> str:
+    return f"{x:.1f}%".replace(".", ",")
+
+
+def signed(x: float, unit: str) -> str:
+    return f"{'+' if x >= 0 else '−'}{num(abs(x))} {unit}"
+
+
+# ---------------- portfolio ----------------
+
+@dataclass
+class Position:
+    qty: float = 0.0
+    cost: float = 0.0       # money still invested in the remaining qty (avg price * qty)
+    realized: float = 0.0   # profit fixed by sells
+
+    @property
+    def avg_price(self) -> float:
+        return self.cost / self.qty if self.qty > 1e-12 else 0.0
+
+
+def build_positions(txs: list[tuple[str, float, float]]) -> dict[str, Position]:
+    """txs = [(asset, qty (+buy / -sell), price)] in chronological order. Average-cost method."""
+    positions: dict[str, Position] = {}
+    for asset, qty, price in txs:
+        p = positions.setdefault(asset, Position())
+        if qty > 0:
+            p.qty += qty
+            p.cost += qty * price
+        else:
+            sell = min(-qty, p.qty)
+            avg = p.avg_price
+            p.realized += (price - avg) * sell
+            p.cost -= avg * sell
+            p.qty -= sell
+    return positions
+
+
+# ---------------- trades ----------------
+
+def trade_risk(entry: float, stop: float, qty: float) -> float:
+    """Money lost if the stop is hit (positive number)."""
+    return abs(entry - stop) * qty
+
+
+def trade_pnl(side: str, entry: float, exit_price: float, qty: float) -> float:
+    return (exit_price - entry) * qty if side == "long" else (entry - exit_price) * qty
+
+
+def stop_is_valid(side: str, entry: float, stop: float) -> bool:
+    return stop < entry if side == "long" else stop > entry
+
+
+def reward_risk(entry: float, stop: float, take: float) -> float:
+    return abs(take - entry) / abs(entry - stop) if entry != stop else 0.0
+
+
+def position_size(deposit: float, risk_pct: float, entry: float, stop: float) -> dict[str, float]:
+    """How much to buy so that hitting the stop loses exactly risk_pct of the deposit."""
+    risk_money = deposit * risk_pct / 100
+    qty = risk_money / abs(entry - stop)
+    value = qty * entry
+    return {"risk": risk_money, "qty": qty, "value": value, "leverage": value / deposit,
+            "stop_pct": abs(entry - stop) / entry * 100}
+
+
+def journal_stats(closed: list[tuple[float, float]]) -> dict[str, float]:
+    """closed = [(pnl, risk)] -> count, winrate %, total, avg R, profit factor."""
+    wins = [p for p, _ in closed if p > 0]
+    losses = [-p for p, _ in closed if p < 0]
+    rs = [p / r for p, r in closed if r > 0]
+    if losses:
+        pf = sum(wins) / sum(losses)
+    else:
+        pf = float("inf") if wins else 0.0
+    return {
+        "count": len(closed),
+        "winrate": len(wins) / len(closed) * 100 if closed else 0.0,
+        "total": sum(p for p, _ in closed),
+        "avg_r": sum(rs) / len(rs) if rs else 0.0,
+        "profit_factor": pf,
+    }
 
 
 def random_tip() -> str:
-    return random.choice(FINANCE_TIPS)
-
-
-def random_motivation() -> str:
-    return random.choice(MOTIVATION)
-
-
-def parse_iso(d: str) -> date:
-    return date.fromisoformat(d)
+    return random.choice(TIPS)

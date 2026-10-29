@@ -1,23 +1,21 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 
-from .logic import ATTENDANCE, EMOTIONS, EXPENSE_CATEGORIES, IT_SKILLS, MEAL_KINDS, MOODS
-
-BTN_TODAY = "📅 Сегодня"
-BTN_STUDY = "📚 Учёба"
-BTN_COLLEGE = "🏫 Колледж"
-BTN_IT = "💻 IT-развитие"
-BTN_DIARY = "🌅 Дневник дня"
-BTN_MONEY = "💰 Финансы"
-BTN_PROGRESS = "📊 Прогресс"
+BTN_DIGEST = "☀️ Сводка"
 BTN_MARKET = "📈 Рынок"
+BTN_PORTFOLIO = "💼 Портфель"
+BTN_TRADES = "📓 Сделки"
+BTN_CALC = "🧮 Калькулятор"
+BTN_LEARN = "🎓 Обучение"
+
+MENU_BUTTONS = (BTN_DIGEST, BTN_MARKET, BTN_PORTFOLIO, BTN_TRADES, BTN_CALC, BTN_LEARN)
 
 
 def main_menu() -> ReplyKeyboardMarkup:
     kb = ReplyKeyboardBuilder()
-    for text in (BTN_TODAY, BTN_PROGRESS, BTN_STUDY, BTN_COLLEGE, BTN_IT, BTN_DIARY, BTN_MONEY, BTN_MARKET):
+    for text in MENU_BUTTONS:
         kb.button(text=text)
-    kb.adjust(2, 2, 2, 2)
+    kb.adjust(2, 2, 2)
     return kb.as_markup(resize_keyboard=True)
 
 
@@ -38,81 +36,21 @@ def grid(items: list[tuple[str, str]], width: int = 2, extra: list[tuple[str, st
     return kb.as_markup()
 
 
-def study_menu(ai_enabled: bool = False) -> InlineKeyboardMarkup:
+def learn_menu(ai_enabled: bool = False) -> InlineKeyboardMarkup:
     rows = [
-        [("🎯 Тема дня", "st:today"), ("🔁 Повторить сегодня", "st:due")],
-        [("🏫 Темы колледжа", "st:list:college"), ("💻 IT-темы", "st:list:it")],
-        [("➕ Добавить тему", "st:add")],
+        [("🎯 Тема дня", "ln:today"), ("🔁 Повторить", "ln:due")],
+        [("📋 Все темы", "ln:list"), ("➕ Своя тема", "ln:add")],
     ]
     if ai_enabled:
-        rows.append([("🤖 Спросить нейросеть", "st:ask:0")])
+        rows.append([("🤖 Спросить нейросеть", "ln:ask:0")])
     return inline(rows)
 
 
 def lesson_kb(topic_id: int, ai_enabled: bool) -> InlineKeyboardMarkup:
-    rows = [[("✅ Разобрала", f"st:done:{topic_id}"), ("⏭ Другую тему", f"st:next:{topic_id}")]]
+    rows = [[("✅ Разобрала", f"ln:done:{topic_id}"), ("⏭ Другую тему", f"ln:next:{topic_id}")]]
     if ai_enabled:
-        rows.append([("🤖 Объясни подробнее", f"st:ai:{topic_id}"), ("❓ Задать вопрос", f"st:ask:{topic_id}")])
+        rows.append([("🤖 Объясни подробнее", f"ln:ai:{topic_id}"), ("❓ Задать вопрос", f"ln:ask:{topic_id}")])
     return inline(rows)
-
-
-def area_choice() -> InlineKeyboardMarkup:
-    return inline([[("🏫 Колледж", "st:addarea:college"), ("💻 IT", "st:addarea:it")]])
-
-
-def attendance_kb() -> InlineKeyboardMarkup:
-    return grid([(v, f"att:{k}") for k, v in ATTENDANCE.items()], extra=[("📈 Статистика посещаемости", "att:stats")])
-
-
-def it_menu() -> InlineKeyboardMarkup:
-    return inline([
-        [("⏱ Записать занятие", "it:log")],
-        [("🗺 Мой роадмап", "st:list:it"), ("📈 Статистика", "it:stats")],
-        [("🚀 Стартовые планы: Python, ИИ, OSINT, трейдинг", "it:starter")],
-    ])
-
-
-def skills_kb() -> InlineKeyboardMarkup:
-    return grid([(v, f"it:skill:{k}") for k, v in IT_SKILLS.items()])
-
-
-def minutes_kb() -> InlineKeyboardMarkup:
-    return grid([(f"{m} мин", f"it:min:{m}") for m in (15, 30, 45, 60, 90, 120)], width=3)
-
-
-def diary_menu() -> InlineKeyboardMarkup:
-    return inline([
-        [("⏰ Я проснулась (сейчас)", "dy:wake:now"), ("✏️ Время подъёма", "dy:wake:manual")],
-        [("🍽 Что я ела", "dy:meal")],
-        [("😊 Настроение и эмоции", "dy:mood")],
-        [("📝 Заметка о дне", "dy:note"), ("👀 Мой день", "dy:show")],
-    ])
-
-
-def meal_kb() -> InlineKeyboardMarkup:
-    return grid([(v, f"dy:mealkind:{k}") for k, v in MEAL_KINDS.items()])
-
-
-def mood_kb() -> InlineKeyboardMarkup:
-    return grid([(f"{e} {n}", f"dy:moodset:{n}") for n, e in MOODS.items()], width=5)
-
-
-def emotions_kb(selected: set[int]) -> InlineKeyboardMarkup:
-    items = [(("✔️ " if i in selected else "") + e, f"dy:emo:{i}") for i, e in enumerate(EMOTIONS)]
-    return grid(items, width=2, extra=[("✅ Готово", "dy:emo:done")])
-
-
-def money_menu() -> InlineKeyboardMarkup:
-    return inline([
-        [("➖ Расход", "fn:expense"), ("➕ Доход", "fn:income")],
-        [("🐷 В копилку", "fn:save"), ("💸 Взять из копилки", "fn:unsave")],
-        [("📊 Отчёт за месяц", "fn:report"), ("🎯 Цель накоплений", "fn:goal")],
-        [("🧾 Последние записи", "fn:last"), ("💡 Совет", "fn:tip")],
-    ])
-
-
-def categories_kb() -> InlineKeyboardMarkup:
-    return grid([(v, f"fn:cat:{k}") for k, v in EXPENSE_CATEGORIES.items()])
 
 
 def skip_kb(data: str) -> InlineKeyboardMarkup:
